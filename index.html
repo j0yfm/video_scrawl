@@ -488,6 +488,22 @@ fileIn.addEventListener('change', () => {
   s.src = 'clip'; s.name = f.name; renderSlot(fileTarget);
 });
 
+/* ---------- default clips loaded on first open ---------- */
+['clips/video_a.mp4', 'clips/video_b.mp4', 'clips/video_c.mp4'].forEach((url, i) => {
+  const s = slots[i], v = document.createElement('video');
+  v.muted = true; v.loop = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+  v.addEventListener('loadeddata', () => {
+    if (s.src !== 'gen' || s.video) return; // the user already picked something else for this slot
+    s.video = v; s.src = 'clip'; s.name = url.split('/').pop(); renderSlot(i);
+    v.play().catch(() => {});
+  }, { once:true });
+  v.src = url;
+});
+// some phones only start video after a touch: nudge any paused clips on the first tap
+document.addEventListener('pointerdown', () => {
+  slots.forEach(s => { if (s.video && s.video.paused) s.video.play().catch(() => {}); });
+}, { once:true, capture:true });
+
 /* ---------- camera (one at a time; flips when both are in use) ---------- */
 const cam = { video:document.createElement('video'), stream:null, facing:null, live:false, switching:false, last:0, failed:false };
 cam.video.muted = true; cam.video.playsInline = true; cam.video.setAttribute('playsinline', '');
