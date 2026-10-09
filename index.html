@@ -215,7 +215,7 @@ function lcd(b, k, v, x) {
 
 const fileIn = $('file');
 let fileTarget = 0;
-const SRC_LABEL = { gen:'PATTERN', clip:'CLIP', front:'FRONT', back:'BACK' };
+const SRC_LABEL = { clip:'CLIP', front:'FRONT', back:'BACK' };
 const STATE_LABEL = { live:'LIVE', ghost:'GHOST LOOP', wait:'WAITING', '':'' };
 const slotUI = [0, 1, 2].map(i => {
   const load = document.createElement('button');
@@ -318,27 +318,9 @@ void main(){ vec2 p = vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2)); vUv
 const FS_PREP = `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 o;
-uniform sampler2D uSrc; uniform float uSrcAsp, uT; uniform int uMirror, uGen;
-vec3 gen(int g, vec2 uv, float t){
-  if(g==0){
-    float v = sin(uv.x*9.0+t*0.9)+sin(uv.y*13.0-t*1.2)+sin((uv.x*0.6+uv.y)*11.0+t*0.6);
-    float b = 0.5+0.5*sin(v*1.6);
-    return mix(vec3(0.02,0.07,0.08), vec3(0.35,0.85,0.78), b*b);
-  }
-  if(g==1){
-    vec2 c = vec2(0.5+0.25*sin(t*0.5), 0.5+0.2*cos(t*0.37));
-    float d = length((uv-c)*vec2(0.5625,1.0));
-    float r = smoothstep(0.35,0.65,0.5+0.5*sin(d*60.0-t*3.0));
-    return mix(vec3(0.1,0.02,0.07), vec3(0.95,0.4,0.7), r);
-  }
-  float w = uv.y+0.06*sin(uv.x*7.0+t*1.4);
-  float s = smoothstep(0.4,0.6,0.5+0.5*sin(w*48.0+t*2.0));
-  float g2 = 0.5+0.5*sin(uv.x*20.0-t);
-  return mix(vec3(0.08,0.05,0.01), vec3(0.98,0.72,0.25)*(0.7+0.3*g2), s);
-}
+uniform sampler2D uSrc; uniform float uSrcAsp; uniform int uMirror;
 void main(){
   vec2 uv = vUv;
-  if(uGen>=0){ o = vec4(gen(uGen,uv,uT),1.0); return; }
   if(uMirror==1) uv.x = 1.0-uv.x;
   float ta = 0.5625;
   if(uSrcAsp>ta) uv.x = 0.5+(uv.x-0.5)*ta/uSrcAsp; else uv.y = 0.5+(uv.y-0.5)*uSrcAsp/ta;
@@ -463,14 +445,14 @@ function clearAll() {
 }
 
 /* ---------- slots + sources ---------- */
-const slots = [0, 1, 2].map(i => ({ i, src:'gen', video:null, url:null, tex:videoTex(), ring:ringTex(),
+const slots = [0, 1, 2].map(i => ({ i, src:'clip', video:null, url:null, tex:videoTex(), ring:ringTex(),
   head:0, filled:0, play:0, ghost:false, base:0, back:0 }));
 const facingOf = s => s.src === 'front' ? 'user' : s.src === 'back' ? 'environment' : null;
 orderUI();
 
 function cycleSource(i) {
   const s = slots[i];
-  const order = ['gen', 'front', 'back'].concat(s.video ? ['clip'] : []);
+  const order = ['clip', 'front', 'back'];
   s.src = order[(order.indexOf(s.src) + 1) % order.length];
   if (facingOf(s)) cam.failed = false;
   renderSlot(i);
@@ -493,8 +475,8 @@ fileIn.addEventListener('change', () => {
   const s = slots[i], v = document.createElement('video');
   v.muted = true; v.loop = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
   v.addEventListener('loadeddata', () => {
-    if (s.src !== 'gen' || s.video) return; // the user already picked something else for this slot
-    s.video = v; s.src = 'clip'; s.name = url.split('/').pop(); renderSlot(i);
+    if (s.video) return; // the user already loaded their own clip into this slot
+    s.video = v; s.name = url.split('/').pop(); renderSlot(i);
     v.play().catch(() => {});
   }, { once:true });
   v.src = url;
@@ -518,7 +500,7 @@ async function startCam(f) {
     cam.live = true; cam.last = performance.now();
   } catch (e) {
     cam.failed = true; cam.facing = null;
-    slots.forEach((s, i) => { if (facingOf(s)) { s.src = 'gen'; renderSlot(i); } });
+    slots.forEach((s, i) => { if (facingOf(s)) { s.src = 'clip'; renderSlot(i); } });
     toast('The camera is blocked here. Open the hosted copy over https (like GitHub Pages) and allow camera access.', 6000);
   }
   cam.switching = false;
@@ -546,12 +528,10 @@ function capture(now) {
   const camReady = cam.live && cam.video.readyState >= 2 && cam.video.videoWidth > 0;
   if (camReady && slots.some(s => facingOf(s) === cam.facing)) upload(camTex, cam.video);
   gl.useProgram(pPrep);
-  gl.uniform1f(pPrep.u.uT, now / 1000);
   gl.uniform1i(pPrep.u.uSrc, 5);
   for (const s of slots) {
-    let live = false, tex = dummy, asp = 1, mirror = 0, gen = -1;
-    if (s.src === 'gen') { live = true; gen = s.i; }
-    else if (s.src === 'clip') {
+    let live = false, tex = dummy, asp = 1, mirror = 0;
+    if (s.src === 'clip') {
       const v = s.video;
       if (v && v.readyState >= 2 && v.videoWidth) { upload(s.tex, v); tex = s.tex; asp = v.videoWidth / v.videoHeight; live = true; }
     } else if (camReady && cam.facing === facingOf(s)) {
@@ -563,7 +543,7 @@ function capture(now) {
       gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, s.ring, 0, s.head);
       gl.viewport(0, 0, RW, RH);
       gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.uniform1f(pPrep.u.uSrcAsp, asp); gl.uniform1i(pPrep.u.uMirror, mirror); gl.uniform1i(pPrep.u.uGen, gen);
+      gl.uniform1f(pPrep.u.uSrcAsp, asp); gl.uniform1i(pPrep.u.uMirror, mirror);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       s.head = (s.head + 1) % N; s.filled = Math.min(s.filled + 1, N); s.ghost = false;
     } else {
