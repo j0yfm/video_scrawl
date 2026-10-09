@@ -477,9 +477,10 @@ fileIn.addEventListener('change', () => {
   v.addEventListener('loadeddata', () => {
     if (s.video) return; // the user already loaded their own clip into this slot
     s.video = v; s.name = url.split('/').pop(); renderSlot(i);
-    v.play().catch(() => {});
   }, { once:true });
   v.src = url;
+  v.load();
+  v.play().catch(() => {}); // iPhones don't fetch video data until play() is called
 });
 // some phones only start video after a touch: nudge any paused clips on the first tap
 document.addEventListener('pointerdown', () => {
@@ -662,9 +663,6 @@ function frame(now) {
   gl.uniform1i(pShow.u.uTex, 4);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
-// sample strokes so the first frame already shows a mix (L2 wave, L3 ring)
-for (let t = 0; t <= 1; t += 0.012) stamps.push(0.12 + 0.76 * t, 0.62 + 0.12 * Math.sin(t * 9), 0.09, 0.5);
-for (let a = 0; a <= Math.PI * 2; a += 0.08) stamps.push(0.5 + Math.cos(a) * 0.16 / 0.5625, 0.28 + Math.sin(a) * 0.16, 0.07, 2.5);
 requestAnimationFrame(frame);
 })();
 </script>
